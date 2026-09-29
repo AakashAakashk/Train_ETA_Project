@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dynamic Train ETA Simulation</title>
+
+    <!-- Leaflet CSS -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="app">
+
+        <!-- HEADER -->
+        <header class="header">
+            <div>
+                <h1>Dynamic Train ETA Simulation</h1>
+                <p>SIH 2026 – Dynamic Forecast of Expected Time of Arrival</p>
+            </div>
+        </header>
+
+        <!-- CONTROLS -->
+        <section class="controls">
+
+            <div class="control-group">
+                <label for="trainSelect">Train</label>
+
+                <select id="trainSelect">
+                    <option value="12673">12673</option>
+                    <option value="ADD_NEW">+ Add New Train</option>
+                </select>
+            </div>
+
+            <button id="startBtn" class="btn start">
+                ▶ Start
+            </button>
+
+            <button id="pauseBtn" class="btn pause">
+                ⏸ Pause
+            </button>
+
+            <button id="resetBtn" class="btn reset">
+                ↻ Reset
+            </button>
+
+            <button id="deleteBtn" class="btn delete">
+                🗑 Delete Selected Train
+            </button>
+
+            <div class="speed-control">
+                <label for="demoSpeed">
+                    Demo Speed: <span id="speedValue">5×</span>
+                </label>
+
+                <input
+                    type="range"
+                    id="demoSpeed"
+                    min="1"
+                    max="10"
+                    value="5"
+                >
+            </div>
+
+        </section>
+
+        <!-- MAIN AREA -->
+        <main class="main-container">
+
+            <!-- MAP -->
+            <div id="map"></div>
+
+            <!-- INFORMATION PANEL -->
+            <aside class="info-panel">
+
+                <h2>Train Information</h2>
+
+                <div class="info-item">
+                    <span>Train</span>
+                    <strong id="trainName">12673 Express</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Speed</span>
+                    <strong id="currentSpeed">0 km/h</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Distance</span>
+                    <strong id="distanceCovered">0 km</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Current Station</span>
+                    <strong id="currentStation">Mumbai Central</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Next Station</span>
+                    <strong id="nextStation">Borivali</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Weather</span>
+                    <strong id="weather">Clear</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Status</span>
+                    <strong id="status">Ready</strong>
+                </div>
+
+                <!-- NEW: real ML prediction fields, filled by script.js
+                     via calls to the FastAPI /eta backend on port 8001 -->
+                <div class="info-item">
+                    <span>Predicted Delay</span>
+                    <strong id="predictedDelay">-</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Predicted ETA</span>
+                    <strong id="predictedEta">-</strong>
+                </div>
+
+                <div class="info-item">
+                    <span>Confidence Range</span>
+                    <strong id="confidenceRange">-</strong>
+                </div>
+
+                <div class="model-note">
+                    <h3>ML Prediction</h3>
+                    <p>
+                        Predicted Delay, Predicted ETA, and Confidence Range
+                        come from the trained XGBoost model, fetched live as
+                        the train reaches each station.
+                    </p>
+                </div>
+
+            </aside>
+
+        </main>
+
+    </div>
+
+    <!-- ADD TRAIN MODAL -->
+    <div id="addTrainModal" class="modal hidden">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h2>Add New Train</h2>
+                <button id="closeModalBtn" class="close-btn">
+                    ×
+                </button>
+            </div>
+
+            <form id="trainForm">
+
+                <div class="form-grid">
+
+                    <div>
+                        <label>Train Number</label>
+                        <input
+                            type="text"
+                            id="newTrainNumber"
+                            required
+                        >
+                    </div>
+
+                    <div>
+                        <label>Train Name</label>
+                        <input
+                            type="text"
+                            id="newTrainName"
+                            required
+                        >
+                    </div>
+
+                    <div>
+                        <label>Normal Speed (km/h)</label>
+                        <input
+                            type="number"
+                            id="newTrainSpeed"
+                            min="1"
+                            max="300"
+                            value="80"
+                            required
+                        >
+                    </div>
+
+                </div>
+
+                <h3 class="station-title">
+                    Stations
+                </h3>
+
+                <p class="form-help">
+                    Add stations in route order. Distance is measured
+                    from the starting station. For the ETA model to work,
+                    use the REAL train number and REAL station codes
+                    from the dataset (e.g. train 1023, station codes like
+                    JJR) -- not invented ones.
+                </p>
+
+                <div id="stationContainer">
+
+                    <div class="station-row">
+
+                        <input
+                            type="text"
+                            placeholder="Station Name"
+                            class="station-name"
+                            required
+                        >
+
+                        <input
+                            type="text"
+                            placeholder="Code"
+                            class="station-code"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            placeholder="Distance (km)"
+                            class="station-distance"
+                            min="0"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            step="any"
+                            placeholder="Latitude"
+                            class="station-lat"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            step="any"
+                            placeholder="Longitude"
+                            class="station-lng"
+                            required
+                        >
+
+                        <button
+                            type="button"
+                            class="remove-station"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+                    <div class="station-row">
+
+                        <input
+                            type="text"
+                            placeholder="Station Name"
+                            class="station-name"
+                            required
+                        >
+
+                        <input
+                            type="text"
+                            placeholder="Code"
+                            class="station-code"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            placeholder="Distance (km)"
+                            class="station-distance"
+                            min="0"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            step="any"
+                            placeholder="Latitude"
+                            class="station-lat"
+                            required
+                        >
+
+                        <input
+                            type="number"
+                            step="any"
+                            placeholder="Longitude"
+                            class="station-lng"
+                            required
+                        >
+
+                        <button
+                            type="button"
+                            class="remove-station"
+                        >
+                            ×
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <button
+                    type="button"
+                    id="addStationBtn"
+                    class="add-station-btn"
+                >
+                    + Add Station
+                </button>
+
+                <div class="modal-actions">
+
+                    <button
+                        type="button"
+                        id="cancelBtn"
+                        class="btn cancel"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="btn save"
+                    >
+                        Add Train
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    <!-- DELETE CONFIRMATION -->
+    <div id="deleteModal" class="modal hidden">
+
+        <div class="confirm-box">
+
+            <h2>Delete Train?</h2>
+
+            <p>
+                Are you sure you want to delete the selected train
+                from the simulation?
+            </p>
+
+            <div class="modal-actions">
+
+                <button
+                    id="cancelDeleteBtn"
+                    class="btn cancel"
+                >
+                    Cancel
+                </button>
+
+                <button
+                    id="confirmDeleteBtn"
+                    class="btn delete"
+                >
+                    Delete
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Leaflet JS -->
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+    </script>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
